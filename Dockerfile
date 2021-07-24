@@ -1,4 +1,4 @@
-FROM golang:1.15-buster AS build
+FROM golang:1.16-buster AS build
 WORKDIR /go/src/go-diff
 ENV CGO_ENABLED=0
 ENV GO111MODULE=on 
@@ -11,4 +11,4 @@ WORKDIR /opt/go-diff
 COPY --from=build /go/bin/go-diff bin/go-diff
 RUN chmod +x bin/go-diff
 ENV GIN_MODE=release
-CMD ["bin/go-diff"] 
+ENTRYPOINT ["bin/go-diff"] 
