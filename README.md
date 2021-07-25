@@ -2,8 +2,8 @@
 # Prerequisites
 
 * Go 1.16+
-* GoMock 1.4+
-    * Install GoMock: `GO111MODULE=on go get github.com/golang/mock/mockgen@v1.4.4`
+* GoMock 1.6.0
+    * Install GoMock: `go install github.com/golang/mock/mockgen@v1.6.0`
 * Redis 6.x: persistent application storage, available via Docker. 
 
 * Optional: Docker. There is a multi-stage build and a docker-compose file available, no need to install any of the previously mentioned dependencies when no development work is required.

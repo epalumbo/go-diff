@@ -2,7 +2,7 @@ FROM golang:1.16-buster AS build
 WORKDIR /go/src/go-diff
 ENV CGO_ENABLED=0
 ENV GO111MODULE=on 
-RUN go get github.com/golang/mock/mockgen@v1.4.4
+RUN go install github.com/golang/mock/mockgen@v1.6.0
 COPY . .
 RUN go generate ./... && go test ./... && go install
 
