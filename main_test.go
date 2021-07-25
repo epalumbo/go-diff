@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 )
@@ -26,6 +27,7 @@ type DiffResponseBody struct {
 func TestMain(m *testing.M) {
 	dbURL, stopMiniRedis := startMiniRedis()
 	shutdown := RunApplication("127.0.0.1:8081", dbURL)
+	time.Sleep(1 * time.Second)
 	c := m.Run()
 	shutdown(context.Background())
 	stopMiniRedis()
