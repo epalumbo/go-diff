@@ -9,15 +9,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ehpalumbo/go-diff/api"
 	"github.com/ehpalumbo/go-diff/domain"
 	"github.com/ehpalumbo/go-diff/repository"
 	"github.com/ehpalumbo/go-diff/service"
-	"github.com/go-redis/redis/v8"
 )
 
 func main() {
-	shutdown := RunApplication(":8080", os.Getenv("REDIS_URL"))
+	repo := repository.NewS3DiffRepository(getS3Client(), os.Getenv("AWS_BUCKET_NAME"))
+	shutdown := RunApplication(":8080", repo)
 	// graceful shutdown is achieved by listening to system signals
 	quit := make(chan os.Signal)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -29,10 +31,9 @@ func main() {
 }
 
 // RunApplication is the application entrypoint.
-// It takes the Redis URL as input but it defaults to localhost if not defined.
+// Requires a DiffRepository implementation.
 // It returns a function to shutdown the started service.
-func RunApplication(addr, dbURL string) func(context.Context) {
-	repo := repository.NewRedisRepository(getRedisClientOptions(dbURL))
+func RunApplication(addr string, repo service.DiffRepository) func(context.Context) {
 	diff := domain.NewDifferImpl()
 	svc := service.NewDiffService(diff, repo)
 	app := api.NewApplication(svc)
@@ -55,13 +56,10 @@ func shutdownFunc(srv *http.Server) func(context.Context) {
 	}
 }
 
-func getRedisClientOptions(dbURL string) *redis.Options {
-	if len(dbURL) == 0 {
-		dbURL = "redis://localhost:6379/"
-	}
-	opt, err := redis.ParseURL(dbURL)
+func getS3Client() *s3.Client {
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		panic(err)
+		log.Fatal("Cannot load AWS configuration.\n", err)
 	}
-	return opt
+	return s3.NewFromConfig(cfg)
 }

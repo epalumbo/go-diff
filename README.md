@@ -4,7 +4,6 @@
 * Go 1.16+
 * GoMock 1.6.0
     * Install GoMock: `go install github.com/golang/mock/mockgen@v1.6.0`
-* Redis 6.x: persistent application storage, available via Docker. 
 
 * Optional: Docker. There is a multi-stage build and a docker-compose file available, no need to install any of the previously mentioned dependencies when no development work is required.
 
@@ -30,21 +29,21 @@ During development the service can be run locally as follows:
 $ go run .
 ```
 For production use, after build, run the generated executable file.
-In any case, do not forget to set the `REDIS_URL` environment variable with the proper Redis URL connection string.
+In any case, do not forget to configure the AWS SDK (credentials and region via local profile or environment variables, or execution roles when running in the cloud) and the bucket name. See docker-compose.yml for required variables.
 
 Using Docker Compose (recommended):
 ```sh
-$ docker-compose up
+$ docker compose up
 ```
-* This will run the service container and a Redis database. 
 * HTTP service will listen on local port 8080.
+* You can easily define environment variables by placing an untracked ".env" file in the root directory.
 
 To stop the services and clean:
 ```sh
-$ docker-compose down
+$ docker compose down
 ```
 
-Just to run the service container using Docker:
+To run the service container using Docker without Compose:
 ```sh
 $ docker run -p 8080:8080 go-diff
 ```
