@@ -27,7 +27,7 @@ type DiffResponseBody struct {
 func TestMain(m *testing.M) {
 	dbURL, stopMiniRedis := startMiniRedis()
 	shutdown := RunApplication("127.0.0.1:8081", dbURL)
-	time.Sleep(1 * time.Second)
+	waitForServerToStart()
 	c := m.Run()
 	shutdown(context.Background())
 	stopMiniRedis()
@@ -42,6 +42,21 @@ func startMiniRedis() (string, func()) {
 	dbURL := "redis://" + mini.Addr()
 	return dbURL, func() {
 		mini.Close()
+	}
+}
+
+func waitForServerToStart() {
+	ticks := time.Tick(100 * time.Millisecond)
+	i := 0
+	for range ticks {
+		_, err := http.Get(baseURL)
+		if err == nil {
+			return
+		}
+		if i > 30 {
+			panic(err)
+		}
+		i++
 	}
 }
 
