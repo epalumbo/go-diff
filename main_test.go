@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
+	"github.com/ehpalumbo/go-diff/repository/fake"
 )
 
 const baseURL = "http://127.0.0.1:8081/v1/diff"
@@ -25,24 +25,11 @@ type DiffResponseBody struct {
 }
 
 func TestMain(m *testing.M) {
-	dbURL, stopMiniRedis := startMiniRedis()
-	shutdown := RunApplication("127.0.0.1:8081", dbURL)
+	shutdown := RunApplication("127.0.0.1:8081", fake.NewFakeDiffRepository())
 	waitForServerToStart()
 	c := m.Run()
 	shutdown(context.Background())
-	stopMiniRedis()
 	os.Exit(c)
-}
-
-func startMiniRedis() (string, func()) {
-	mini, err := miniredis.Run()
-	if err != nil {
-		panic(err)
-	}
-	dbURL := "redis://" + mini.Addr()
-	return dbURL, func() {
-		mini.Close()
-	}
 }
 
 func waitForServerToStart() {
