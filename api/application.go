@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
+
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/ehpalumbo/go-diff/domain"
-	"github.com/gin-gonic/gin"
 )
 
 // DiffService provides access to the service layer operations
@@ -21,59 +23,79 @@ func NewApplication(s DiffService) Application {
 	return Application{s}
 }
 
-// GetRouter returns a ready-to-use Gin engine for this Application
-func (app Application) GetRouter() *gin.Engine {
-	router := gin.Default()
-
-	diff := router.Group("/v1/diff")
-
-	// POST endpoint to upload sides to diff
-	diff.POST("/:id/:side", app.saveSide)
-
-	// GET endpoint to get diff results
-	diff.GET("/:id", app.getReport)
-
-	return router
+// Handle in the Lambda handler implementation
+func (app Application) Handle(req events.APIGatewayProxyRequest) (res events.APIGatewayProxyResponse) {
+	switch req.HTTPMethod {
+	case "GET":
+		res = app.getReport(req)
+	case "POST":
+		res = app.saveSide(req)
+	default:
+		res = events.APIGatewayProxyResponse{StatusCode: 404}
+	}
+	decorate(&res)
+	return
 }
 
-func (app Application) saveSide(ctx *gin.Context) {
-	id := ctx.Param("id")
+func (app Application) saveSide(req events.APIGatewayProxyRequest) events.APIGatewayProxyResponse {
+	ID := req.PathParameters["id"]
 
 	// check side is valid
-	side, err := domain.ParseDiffSide(ctx.Param("side"))
+	side, err := domain.ParseDiffSide(req.PathParameters["side"])
 	if err != nil {
-		ctx.Status(404)
-		return
+		return events.APIGatewayProxyResponse{
+			StatusCode: 404,
+		}
 	}
 
 	// parse request body
 	var requestBody PayloadRequestBody
-	err = ctx.BindJSON(&requestBody)
-	if err != nil {
-		ctx.JSON(400, &ErrorResponseBody{id, "invalid body", err.Error()})
-		return
+	if err := json.Unmarshal([]byte(req.Body), &requestBody); err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 400,
+			Body: toJSON(&ErrorResponseBody{
+				ID:     ID,
+				Reason: "invalid body",
+				Cause:  err.Error(),
+			}),
+		}
+	}
+	if len(requestBody.Data) == 0 {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 400,
+			Body: toJSON(&ErrorResponseBody{
+				ID:     ID,
+				Reason: "missing data",
+			}),
+		}
 	}
 
 	// save side data
 	payload := domain.DiffPayload{
-		ID:    id,
+		ID:    ID,
 		Side:  side,
 		Value: requestBody.Data,
 	}
 	err = app.service.Save(payload)
 	if err != nil {
-		ctx.JSON(500, &ErrorResponseBody{id, "save operation failed", err.Error()})
-		return
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body: toJSON(&ErrorResponseBody{
+				ID:     ID,
+				Reason: "save operation failed",
+				Cause:  err.Error(),
+			}),
+		}
 	}
 
-	ctx.Status(204)
+	return events.APIGatewayProxyResponse{
+		StatusCode: 204,
+	}
 }
 
-func (app Application) getReport(ctx *gin.Context) {
-	id := ctx.Param("id")
-
-	report, err := app.service.GetDiffReport(id)
-
+func (app Application) getReport(req events.APIGatewayProxyRequest) events.APIGatewayProxyResponse {
+	ID := req.PathParameters["id"]
+	report, err := app.service.GetDiffReport(ID)
 	if err != nil {
 		var status int
 		var message string
@@ -84,9 +106,19 @@ func (app Application) getReport(ctx *gin.Context) {
 			status = 500
 			message = "get diff failed"
 		}
-		ctx.JSON(status, &ErrorResponseBody{id, message, err.Error()})
+		return events.APIGatewayProxyResponse{
+			StatusCode: status,
+			Body: toJSON(&ErrorResponseBody{
+				ID:     ID,
+				Reason: message,
+				Cause:  err.Error(),
+			}),
+		}
 	} else {
-		ctx.JSON(200, toDiffReportResponseBody(&report))
+		return events.APIGatewayProxyResponse{
+			StatusCode: 200,
+			Body:       toJSON(toDiffReportResponseBody(&report)),
+		}
 	}
 }
 
@@ -107,4 +139,16 @@ func toDiffReportResponseBody(report *domain.DiffReport) *DiffReportResponseBody
 		Result:   report.Result.String(),
 		Insights: insightResponses,
 	}
+}
+
+func toJSON(v interface{}) string {
+	buf, _ := json.Marshal(v)
+	return string(buf)
+}
+
+func decorate(res *events.APIGatewayProxyResponse) {
+	if res.Headers == nil {
+		res.Headers = make(map[string]string)
+	}
+	res.Headers["Content-Type"] = "application/json"
 }

@@ -2,7 +2,7 @@ package api
 
 // PayloadRequestBody is the definition of the JSON request body for uploading side data
 type PayloadRequestBody struct {
-	Data string `json:"data" binding:"required"`
+	Data string `json:"data"`
 }
 
 // DiffInsightResponse contains information about a single difference in the data
