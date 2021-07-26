@@ -1,20 +1,14 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/ehpalumbo/go-diff/api"
 	"github.com/ehpalumbo/go-diff/repository/fake"
 )
-
-const baseURL = "http://127.0.0.1:8081/v1/diff"
 
 type DiffResponseBody struct {
 	Result   string `json:"result" binding:"required"`
@@ -24,27 +18,12 @@ type DiffResponseBody struct {
 	} `json:"insights"`
 }
 
-func TestMain(m *testing.M) {
-	shutdown := RunApplication("127.0.0.1:8081", fake.NewFakeDiffRepository())
-	waitForServerToStart()
-	c := m.Run()
-	shutdown(context.Background())
-	os.Exit(c)
-}
+var app api.Application
 
-func waitForServerToStart() {
-	ticks := time.Tick(100 * time.Millisecond)
-	i := 0
-	for range ticks {
-		_, err := http.Get(baseURL)
-		if err == nil {
-			return
-		}
-		if i > 30 {
-			panic(err)
-		}
-		i++
-	}
+func TestMain(m *testing.M) {
+	app = RunApplication(fake.NewFakeDiffRepository())
+	c := m.Run()
+	os.Exit(c)
 }
 
 func TestDiffNotEqual(t *testing.T) {
@@ -113,7 +92,6 @@ func TestDiffWithMissingSide(t *testing.T) {
 func TestMissingDiff(t *testing.T) {
 
 	r := performGET(t, "5")
-	defer r.Body.Close()
 
 	if r.StatusCode != 404 {
 		t.Fatalf("accepted missing diff ID, got status: %d", r.StatusCode)
@@ -139,22 +117,22 @@ func TestDiffWithOverride(t *testing.T) {
 func TestPayloadRejected(t *testing.T) {
 
 	r := performPOST(t, "7", "left", []byte("not/base64"))
-	defer r.Body.Close()
 
 	if r.StatusCode != 400 {
-		body, _ := ioutil.ReadAll(r.Body)
-		t.Fatalf("accepted invalid data, got status: %d, body: %v", r.StatusCode, string(body))
+		t.Fatalf("accepted invalid data, got status: %d, body: %v", r.StatusCode, r.Body)
 	}
 
 }
 
-func performPOST(t *testing.T, ID, side string, p []byte) *http.Response {
-	URI := fmt.Sprintf("%s/%s/%s", baseURL, ID, side)
-	r, err := http.Post(URI, "application/json", bytes.NewBuffer(p))
-	if err != nil {
-		t.Fatal("cannot call upload API", err)
-	}
-	return r
+func performPOST(t *testing.T, ID, side string, p []byte) events.APIGatewayProxyResponse {
+	return app.Handle(events.APIGatewayProxyRequest{
+		HTTPMethod: "POST",
+		PathParameters: map[string]string{
+			"id":   ID,
+			"side": side,
+		},
+		Body: string(p),
+	})
 }
 
 func upload(t *testing.T, ID string, side string, data string) {
@@ -166,38 +144,29 @@ func upload(t *testing.T, ID string, side string, data string) {
 	}
 
 	r := performPOST(t, ID, side, p)
-	defer r.Body.Close()
 
 	if r.StatusCode != 204 {
-		body, _ := ioutil.ReadAll(r.Body)
-		t.Errorf("POST %s/%s, got wrong status code: %d, body: %v", ID, side, r.StatusCode, string(body))
+		t.Errorf("POST %s/%s, got wrong status code: %d, body: %v", ID, side, r.StatusCode, r.Body)
 	}
 }
 
-func performGET(t *testing.T, ID string) *http.Response {
-	URI := fmt.Sprintf("%s/%s", baseURL, ID)
-	r, err := http.Get(URI)
-	if err != nil {
-		t.Fatalf("cannot get diff report %s: %v", ID, err)
-	}
-	return r
+func performGET(t *testing.T, ID string) events.APIGatewayProxyResponse {
+	return app.Handle(events.APIGatewayProxyRequest{
+		HTTPMethod: "GET",
+		PathParameters: map[string]string{
+			"id": ID,
+		},
+	})
 }
 
 func diff(t *testing.T, ID string) (body DiffResponseBody) {
 	r := performGET(t, ID)
-	defer r.Body.Close()
 
 	if r.StatusCode != 200 {
-		body, _ := ioutil.ReadAll(r.Body)
-		t.Fatalf("GET %s, got wrong status code: %d, body: %v", ID, r.StatusCode, string(body))
+		t.Fatalf("GET %s, got wrong status code: %d, body: %v", ID, r.StatusCode, r.Body)
 	}
 
-	b, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		t.Fatal("cannot read diff response body", err)
-	}
-
-	if err := json.Unmarshal(b, &body); err != nil {
+	if err := json.Unmarshal([]byte(r.Body), &body); err != nil {
 		t.Fatal("cannot parse diff response body", err)
 	}
 	return

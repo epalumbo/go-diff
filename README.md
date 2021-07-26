@@ -18,32 +18,15 @@ With test execution:
 $ go generate ./... && go test ./... && go build
 ```
 
-Using Docker (recommended):
+Using Docker (recommended, required for deployment):
 ```sh
 $ docker build -t go-diff .
 ```
 
-# Running the API server
-During development the service can be run locally as follows:
-```sh
-$ go run .
-```
-For production use, after build, run the generated executable file.
-In any case, do not forget to configure the AWS SDK (credentials and region via local profile or environment variables, or execution roles when running in the cloud) and the bucket name. See docker-compose.yml for required variables.
-
-Using Docker Compose (recommended):
-```sh
-$ docker compose up
-```
-* HTTP service will listen on local port 8080.
-* You can easily define environment variables by placing an untracked ".env" file in the root directory.
-
-To stop the services and clean:
-```sh
-$ docker compose down
-```
-
-To run the service container using Docker without Compose:
-```sh
-$ docker run -p 8080:8080 go-diff
-```
+# Deploying to AWS
+The application shall be deployed to AWS Lambda as a Docker container.
+- After building the Docker image, it has to be pushed to a private AWS ECR repository.
+- Then it can be configured as container for AWS Lambda.
+- The Lambda application requires "AWS_BUCKET_NAME" as environment variable, pointing to a S3 bucket in the same region.
+- The Lambda execution role has to allow RW access to the provided S3 bucket.
+- An API Gateway proxy integration must be configured to invoke the deployed Lambda function.
