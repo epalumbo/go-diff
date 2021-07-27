@@ -4,7 +4,6 @@
 * Go 1.16+
 * GoMock 1.6.0
     * Install GoMock: `go install github.com/golang/mock/mockgen@v1.6.0`
-* Redis 6.x: persistent application storage, available via Docker. 
 
 * Optional: Docker. There is a multi-stage build and a docker-compose file available, no need to install any of the previously mentioned dependencies when no development work is required.
 
@@ -19,32 +18,15 @@ With test execution:
 $ go generate ./... && go test ./... && go build
 ```
 
-Using Docker (recommended):
+Using Docker (recommended, required for deployment):
 ```sh
 $ docker build -t go-diff .
 ```
 
-# Running the API server
-During development the service can be run locally as follows:
-```sh
-$ go run .
-```
-For production use, after build, run the generated executable file.
-In any case, do not forget to set the `REDIS_URL` environment variable with the proper Redis URL connection string.
-
-Using Docker Compose (recommended):
-```sh
-$ docker-compose up
-```
-* This will run the service container and a Redis database. 
-* HTTP service will listen on local port 8080.
-
-To stop the services and clean:
-```sh
-$ docker-compose down
-```
-
-Just to run the service container using Docker:
-```sh
-$ docker run -p 8080:8080 go-diff
-```
+# Deploying to AWS
+The application shall be deployed to AWS Lambda as a Docker container.
+- After building the Docker image, it has to be pushed to a private AWS ECR repository.
+- Then it can be configured as container for AWS Lambda.
+- The Lambda application requires "AWS_BUCKET_NAME" as environment variable, pointing to a S3 bucket in the same region.
+- The Lambda execution role has to allow RW access to the provided S3 bucket.
+- An API Gateway proxy integration must be configured to invoke the deployed Lambda function.
