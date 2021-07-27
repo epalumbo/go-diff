@@ -5,7 +5,7 @@
 * GoMock 1.6.0
     * Install GoMock: `go install github.com/golang/mock/mockgen@v1.6.0`
 
-* Optional: Docker. There is a multi-stage build and a docker-compose file available, no need to install any of the previously mentioned dependencies when no development work is required.
+* Optional: Docker. There is a multi-stage build available, no need to install any of the previously mentioned dependencies when no development work is required.
 
 # Build
 Binary can be quickly built locally as follows:
