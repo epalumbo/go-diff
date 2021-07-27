@@ -4,9 +4,11 @@ package api_test
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"github.com/aws/aws-lambda-go/events"
 	"github.com/ehpalumbo/go-diff/api"
 	"github.com/ehpalumbo/go-diff/api/mocks"
 	"github.com/ehpalumbo/go-diff/domain"
@@ -15,12 +17,12 @@ import (
 
 var svcMock *mocks.MockDiffService
 
-var app api.Application
+var router http.Handler
 
 func setUp(t *testing.T) func() {
 	ctrl := gomock.NewController(t)
 	svcMock = mocks.NewMockDiffService(ctrl)
-	app = api.NewApplication(svcMock)
+	router = api.NewApplication(svcMock).GetRouter()
 	return func() {
 		ctrl.Finish()
 	}
@@ -31,20 +33,14 @@ func TestSaveRejectsIllegalDiffSide(t *testing.T) {
 	defer tearDown()
 
 	// given
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "POST",
-		PathParameters: map[string]string{
-			"id":   "1",
-			"side": "wrong", // illegal
-		},
-		Body: `{"data": "abc"}`,
-	}
+	req, _ := http.NewRequest("POST", "/v1/diff/1/wrong", strings.NewReader(`{"data": "abc"}`))
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 404 {
+	if w.Code != 404 {
 		t.Error("accepted wrong side in URI")
 	}
 }
@@ -54,20 +50,14 @@ func TestSaveRejectsRequestWithoutProperJSON(t *testing.T) {
 	defer tearDown()
 
 	// given
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "POST",
-		PathParameters: map[string]string{
-			"id":   "1",
-			"side": "left",
-		},
-		Body: "invalid input, not JSON", // illegal
-	}
+	req, _ := http.NewRequest("POST", "/v1/diff/1/left", strings.NewReader("invalid input, not JSON"))
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 400 {
+	if w.Code != 400 {
 		t.Error("accepted invalid JSON")
 	}
 
@@ -75,7 +65,7 @@ func TestSaveRejectsRequestWithoutProperJSON(t *testing.T) {
 		ID     string `json:"id"`
 		Reason string `json:"reason"`
 	}
-	json.Unmarshal([]byte(res.Body), &body)
+	json.Unmarshal(w.Body.Bytes(), &body)
 	if body.ID != "1" {
 		t.Errorf("wrong ID in error response: %s", body.ID)
 	}
@@ -89,28 +79,22 @@ func TestSaveRejectsRequestWithoutDataInPayload(t *testing.T) {
 	defer tearDown()
 
 	// given
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "POST",
-		PathParameters: map[string]string{
-			"id":   "1",
-			"side": "left",
-		},
-		Body: "{}", // illegal
-	}
+	req, _ := http.NewRequest("POST", "/v1/diff/1/left", strings.NewReader("{}"))
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 400 {
+	if w.Code != 400 {
 		t.Error("accepted JSON without data")
 	}
 
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	json.Unmarshal([]byte(res.Body), &body)
-	if body.Reason != "missing data" {
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Reason != "invalid body" {
 		t.Errorf("wrong error reason: %s", body.Reason)
 	}
 }
@@ -127,20 +111,14 @@ func TestSaveFailsWith500WhenServiceSaveFails(t *testing.T) {
 	}
 	svcMock.EXPECT().Save(expectedPayload).Return(errors.New("oops"))
 
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "POST",
-		PathParameters: map[string]string{
-			"id":   "1",
-			"side": "left",
-		},
-		Body: `{"data": "abc"}`,
-	}
+	req, _ := http.NewRequest("POST", "/v1/diff/1/left", strings.NewReader(`{"data": "abc"}`))
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 500 {
+	if w.Code != 500 {
 		t.Error("did not fail with 500 when service operation failed")
 	}
 
@@ -149,8 +127,8 @@ func TestSaveFailsWith500WhenServiceSaveFails(t *testing.T) {
 		Reason string `json:"reason"`
 		Cause  string `json:"cause"`
 	}
-	if err := json.Unmarshal([]byte(res.Body), &body); err != nil {
-		t.Errorf("return response does not match expected JSON response, got: %s", res.Body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Errorf("return response does not match expected JSON response, got: %s", w.Body)
 	}
 	if body.ID != "1" {
 		t.Errorf("wrong ID in error response: %s", body.ID)
@@ -175,21 +153,15 @@ func TestSaveSuccess(t *testing.T) {
 	}
 	svcMock.EXPECT().Save(expectedPayload).Return(nil)
 
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "POST",
-		PathParameters: map[string]string{
-			"id":   "1",
-			"side": "right",
-		},
-		Body: `{"data": "abc"}`,
-	}
+	req, _ := http.NewRequest("POST", "/v1/diff/1/right", strings.NewReader(`{"data": "abc"}`))
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 204 {
-		t.Errorf("failed with status %v", res.StatusCode)
+	if w.Code != 204 {
+		t.Errorf("failed with status %v", w.Code)
 	}
 }
 
@@ -200,27 +172,23 @@ func TestDiffNotFound(t *testing.T) {
 	// given
 	svcMock.EXPECT().GetDiffReport("1").Return(domain.DiffReport{}, domain.DiffNotFoundError{ID: "1"})
 
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "GET",
-		PathParameters: map[string]string{
-			"id": "1",
-		},
-	}
+	req, _ := http.NewRequest("GET", "/v1/diff/1", nil)
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 404 {
-		t.Errorf("accepted ID that should not have been found by service, got status code: %d", res.StatusCode)
+	if w.Code != 404 {
+		t.Errorf("accepted ID that should not have been found by service, got status code: %d", w.Code)
 	}
 
 	var body struct {
 		ID     string `json:"id"`
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(res.Body), &body); err != nil {
-		t.Errorf("returned error response does not fit expected JSON response, got: %s", res.Body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Errorf("returned error response does not fit expected JSON response, got: %s", w.Body)
 	}
 	if body.ID != "1" {
 		t.Errorf("wrong ID in not found response, got: %s", body.ID)
@@ -237,27 +205,23 @@ func TestGetDiffFailed(t *testing.T) {
 	// given
 	svcMock.EXPECT().GetDiffReport("1").Return(domain.DiffReport{}, errors.New("oops"))
 
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "GET",
-		PathParameters: map[string]string{
-			"id": "1",
-		},
-	}
+	req, _ := http.NewRequest("GET", "/v1/diff/1", nil)
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 500 {
-		t.Errorf("accepted ID that should not have been accepted by service, got status code: %d", res.StatusCode)
+	if w.Code != 500 {
+		t.Errorf("accepted ID that should not have been accepted by service, got status code: %d", w.Code)
 	}
 
 	var body struct {
 		ID     string `json:"id"`
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(res.Body), &body); err != nil {
-		t.Errorf("returned error response does not fit expected JSON response, got: %s", res.Body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Errorf("returned error response does not fit expected JSON response, got: %s", w.Body)
 	}
 	if body.ID != "1" {
 		t.Errorf("wrong ID in not found response, got: %s", body.ID)
@@ -283,23 +247,19 @@ func TestGetDiffReportSuccess(t *testing.T) {
 	}
 	svcMock.EXPECT().GetDiffReport("1").Return(r, nil)
 
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "GET",
-		PathParameters: map[string]string{
-			"id": "1",
-		},
-	}
+	req, _ := http.NewRequest("GET", "/v1/diff/1", nil)
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 200 {
-		t.Errorf("rejected ID that should have been accepted by service, got status code: %d", res.StatusCode)
+	if w.Code != 200 {
+		t.Errorf("rejected ID that should have been accepted by service, got status code: %d", w.Code)
 	}
 
-	ct := res.Headers["Content-Type"]
-	if ct != "application/json" {
+	ct := w.Header().Get("Content-Type")
+	if ct != "application/json; charset=utf-8" {
 		t.Errorf("wrong content type header: %s", ct)
 	}
 
@@ -310,8 +270,8 @@ func TestGetDiffReportSuccess(t *testing.T) {
 			Offset uint `json:"offset"`
 		} `json:"insights"`
 	}
-	if err := json.Unmarshal([]byte(res.Body), &body); err != nil {
-		t.Errorf("returned error response does not fit expected JSON response, got: %s", res.Body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Errorf("returned error response does not fit expected JSON response, got: %s", w.Body)
 	}
 	if body.Result != "NOT_EQUAL" {
 		t.Errorf("wrong result in response, got: %s", body.Result)
@@ -339,27 +299,23 @@ func TestGetDiffReportSuccessWithoutInsights(t *testing.T) {
 	}
 	svcMock.EXPECT().GetDiffReport("1").Return(r, nil)
 
-	req := events.APIGatewayProxyRequest{
-		HTTPMethod: "GET",
-		PathParameters: map[string]string{
-			"id": "1",
-		},
-	}
+	req, _ := http.NewRequest("GET", "/v1/diff/1", nil)
+	w := httptest.NewRecorder()
 
 	// when
-	res := app.Handle(req)
+	router.ServeHTTP(w, req)
 
 	// then
-	if res.StatusCode != 200 {
-		t.Errorf("rejected ID that should have been accepted by service, got status code: %d", res.StatusCode)
+	if w.Code != 200 {
+		t.Errorf("rejected ID that should have been accepted by service, got status code: %d", w.Code)
 	}
 
 	var body struct {
 		Result   string     `json:"result"`
 		Insights []struct{} `json:"insights"`
 	}
-	if err := json.Unmarshal([]byte(res.Body), &body); err != nil {
-		t.Errorf("returned error response does not fit expected JSON response, got: %s", res.Body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Errorf("returned error response does not fit expected JSON response, got: %s", w.Body)
 	}
 	if body.Result != "SIZE_MISMATCH" {
 		t.Errorf("wrong result in response, got: %s", body.Result)
