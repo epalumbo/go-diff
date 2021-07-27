@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/ehpalumbo/go-diff/api"
 	"github.com/ehpalumbo/go-diff/repository/fake"
 )
 
@@ -18,10 +18,10 @@ type DiffResponseBody struct {
 	} `json:"insights"`
 }
 
-var app api.Application
+var handler LambdaHandler
 
 func TestMain(m *testing.M) {
-	app = RunApplication(fake.NewFakeDiffRepository())
+	handler = initLambdaHandler(fake.NewFakeDiffRepository())
 	c := m.Run()
 	os.Exit(c)
 }
@@ -125,14 +125,16 @@ func TestPayloadRejected(t *testing.T) {
 }
 
 func performPOST(t *testing.T, ID, side string, p []byte) events.APIGatewayProxyResponse {
-	return app.Handle(events.APIGatewayProxyRequest{
+	res, _ := handler(events.APIGatewayProxyRequest{
 		HTTPMethod: "POST",
+		Path:       fmt.Sprintf("/v1/diff/%s/%s", ID, side),
 		PathParameters: map[string]string{
 			"id":   ID,
 			"side": side,
 		},
 		Body: string(p),
 	})
+	return res
 }
 
 func upload(t *testing.T, ID string, side string, data string) {
@@ -151,12 +153,14 @@ func upload(t *testing.T, ID string, side string, data string) {
 }
 
 func performGET(t *testing.T, ID string) events.APIGatewayProxyResponse {
-	return app.Handle(events.APIGatewayProxyRequest{
+	res, _ := handler(events.APIGatewayProxyRequest{
 		HTTPMethod: "GET",
+		Path:       fmt.Sprintf("/v1/diff/%s", ID),
 		PathParameters: map[string]string{
 			"id": ID,
 		},
 	})
+	return res
 }
 
 func diff(t *testing.T, ID string) (body DiffResponseBody) {
