@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: go-diff stack deployment
+
+Resources:
+
+  GoDiffLambda:
+    Type: AWS::Serverless::Function
+    Metadata:
+        DockerContext: .
+        Dockerfile: Dockerfile
+    Properties:
+      PackageType: Image
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          AWS_BUCKET_NAME: 
+            Ref: GoDiffBucket
+      Events:
+        PostDiff:
+          Type: Api
+          Properties:
+            Path: /v1/diff/{id}/{side}
+            Method: post
+        GetDiff:
+          Type: Api
+          Properties:
+            Path: /v1/diff/{id}
+            Method: get
+      Policies:
+        - S3CrudPolicy:
+            BucketName:
+              Ref: GoDiffBucket
+  
+  GoDiffBucket:
+    Type: 'AWS::S3::Bucket'
