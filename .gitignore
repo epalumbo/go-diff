@@ -17,4 +17,7 @@
 /repository/mocks
 
 # Local configuration
-.env
+samconfig.toml
+
+# SAM build
+.aws-sam
